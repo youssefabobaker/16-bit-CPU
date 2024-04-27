@@ -1,0 +1,235 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+use IEEE.STD_LOGIC_unsigned.ALL;
+
+entity CU is
+	port (
+		clk                 : in    std_logic;
+		pc		    : inout std_logic_vector(3  downto 0):="0000";
+		result              : out   std_logic_vector(15 downto 0):=X"0000"
+	);
+end CU;
+-----------------------------------------------------------------------------
+architecture behavioral of CU is
+-----------------------------------------------------------------------------
+component ROM
+	port
+	(
+		addr : in  std_logic_vector (3 downto 0);
+		CE   : in  std_logic;
+		RE   : in  std_logic;
+		OUTP : out std_logic_vector (15 downto 0)
+	);
+end component;
+------------------------------------------------------------------------------
+component RAM
+	port
+	(
+		Addr : in  std_logic_vector (3 downto 0);
+		INP  : in std_logic_vector (15 downto 0);
+		OUTP : out std_logic_vector (15 downto 0);
+		CE   : in  std_logic;
+		RE   : in  std_logic;
+		WE   : in  std_logic
+	);
+end component;
+----------------------------------------------------------------------------------
+component ALU
+	port 
+	(
+        	A, B    : in std_logic_vector(15 downto 0);
+        	ALU_OUT : out std_logic_vector(15 downto 0);
+		opcode  : in std_logic_vector (3 downto 0);
+		func  	: in std_logic_vector (2 downto 0)
+    	);
+end component;
+----------------------------------------------------------------------------------
+--REGISTER FILE--
+type Reg is array (0 to 7) of std_logic_vector(15 downto 0);
+signal Register_file : Reg:= (
+	"0000000000000000",
+	"0000000000000000",
+	"0000000000000000",
+	"0000000000000000",
+	"0000000000000000",
+	"0000000000000000",
+	"0000000000000000",
+	"0000000000000000"
+    );
+
+--FLAG REGISTER--
+signal flag_register                         	     : std_logic_vector(1 downto 0):="00";
+
+--ALU COMPONENT SIGNALS--
+signal alu_block_A, alu_block_B, alu_block_OUT       : std_logic_vector (15 downto 0);
+signal alu_block_opcode                              : std_logic_vector (3 downto 0);
+signal alu_block_func                                : std_logic_vector (2 downto 0);
+
+--RAM COMPONENT SIGNALS--
+signal ram_block_addr                           : std_logic_vector (3 downto 0);
+signal ram_block_input, ram_block_output        : std_logic_vector (15 downto 0);
+signal ram_block_CE, ram_block_RE, ram_block_WE : std_logic;
+
+--ROM COMPONENT SIGNALS--
+signal inst                       : std_logic_vector(15 downto 0);
+
+--TWO CYCLE FLAGS--
+signal i,ii : std_logic:= '0';
+signal pc1, pc2                   : std_logic_vector(1 downto 0):="00";
+
+--SIGNALS--
+signal rs,rt,rd,imm               : std_logic_vector (15 downto 0);
+signal addr	                  : std_logic_vector (3 downto 0);
+signal branchaddress              : std_logic_vector (3 downto 0);
+signal branchflag                 : std_logic:='0';
+signal carryvalue                 : std_logic_vector (16 downto 0):="00000000000000000";
+----------------------------------------------------------------------------------
+begin
+	rom_block     : ROM   port map (pc, '1', '1', inst);
+	alu_block     : ALU   port map (alu_block_A, alu_block_B, alu_block_OUT, alu_block_opcode, alu_block_func);
+	ram_block     : RAM   port map (ram_block_addr, ram_block_input, ram_block_output, ram_block_CE, ram_block_RE, ram_block_WE);
+
+	process(clk, pc, pc1, inst, alu_block_OUT, rs, rt, rd, imm, addr, flag_register, carryvalue, Register_file, ram_block_output)
+        begin
+-----------------------------------------------------------------------------------------------------------
+	if rising_edge(clk) then
+
+		pc <= std_logic_vector(unsigned(pc)+1);
+
+		--if carryvalue(16) = '1' then
+			--flag_register(1) <= '1';
+		--end if;
+
+		if inst(15 downto 12) = "0001"  then 
+				
+			case inst(2 downto 0) is
+ 			when "000" =>
+ 				Register_file(to_integer(unsigned(inst(5 downto 3))))<= Register_file(to_integer(unsigned(inst(11 downto 9)))) + Register_file(to_integer(unsigned(inst(8 downto 6))));
+				--carryvalue <= ('0' & Register_file(to_integer(unsigned(inst(11 downto 9))))) + ('0' & Register_file(to_integer(unsigned(inst(8 downto 6)))));
+				
+
+ 			when "001" =>
+ 				Register_file(to_integer(unsigned(inst(5 downto 3))))<= Register_file(to_integer(unsigned(inst(11 downto 9)))) - Register_file(to_integer(unsigned(inst(8 downto 6))));
+
+ 			when "010" =>
+ 				Register_file(to_integer(unsigned(inst(5 downto 3))))<=std_logic_vector(unsigned(Register_file(to_integer(unsigned(inst(11 downto 9))))(7 downto 0)) * unsigned(Register_file(to_integer(unsigned(inst(8 downto 6))))(7 downto 0)));
+
+ 			when "011" =>
+ 				Register_file(to_integer(unsigned(inst(5 downto 3))))<= std_logic_vector(unsigned(Register_file(to_integer(unsigned(inst(11 downto 9))))) / unsigned(Register_file(to_integer(unsigned(inst(8 downto 6))))));
+
+			when "100" =>
+ 				Register_file(to_integer(unsigned(inst(5 downto 3))))<= Register_file(to_integer(unsigned(inst(11 downto 9)))) and Register_file(to_integer(unsigned(inst(8 downto 6))));
+
+ 			when "101" =>
+ 				Register_file(to_integer(unsigned(inst(5 downto 3))))<= Register_file(to_integer(unsigned(inst(11 downto 9)))) or Register_file(to_integer(unsigned(inst(8 downto 6))));
+
+ 			when "110" =>
+ 				Register_file(to_integer(unsigned(inst(5 downto 3))))<= Register_file(to_integer(unsigned(inst(11 downto 9)))) xor Register_file(to_integer(unsigned(inst(8 downto 6))));
+
+ 			when others =>
+ 				Register_file(to_integer(unsigned(inst(5 downto 3))))<= not Register_file(to_integer(unsigned(inst(11 downto 9)))) ;
+			end case;
+
+			if inst(2 downto 0) = "000" then
+				carryvalue <= ('0' & Register_file(to_integer(unsigned(inst(11 downto 9))))) + ('0' &  Register_file(to_integer(unsigned(inst(8 downto 6)))) );
+			elsif inst(2 downto 0) = "001"then
+				carryvalue <= ('0' & Register_file(to_integer(unsigned(inst(11 downto 9))))) - ('0' &  Register_file(to_integer(unsigned(inst(8 downto 6)))) );
+			end if;
+
+			if carryvalue(16) = '1' then
+				flag_register(1) <= '1';
+			end if;
+
+			if  Register_file(to_integer(unsigned(inst(5 downto 3))))= X"0000" then	
+				flag_register(0) <= '1';
+			else
+				flag_register(0) <= '0';
+			end if;
+-----------------------------------------------------------------------------------------------------------------------------------
+		elsif inst(15 downto 12) = "0111" then 
+		
+			Register_file(to_integer(unsigned(inst(11 downto 9)))) <= "0000000" & inst(8 downto 0);
+			result <= "0000000" & inst(8 downto 0);
+			if imm = X"0000" then
+				flag_register(0) <= '1';
+			end if;
+-----------------------------------------------------------------------------------------------------------------------------------
+		elsif inst(15 downto 12) = "0010" then 
+		
+			Register_file(to_integer(unsigned(inst(8 downto 6)))) <= Register_file(to_integer(unsigned(inst(11 downto 9)))) + inst(5 downto 0);
+			result <= Register_file(to_integer(unsigned(inst(11 downto 9)))) + inst(5 downto 0);
+-----------------------------------------------------------------------------------------------------------------------------------
+		elsif inst(15 downto 12) = "0011" then 
+			
+			Register_file(to_integer(unsigned(inst(8 downto 6)))) <= Register_file(to_integer(unsigned(inst(11 downto 9)))) - inst(5 downto 0);
+
+			if  (Register_file(to_integer(unsigned(inst(11 downto 9)))) - inst(5 downto 0))= X"0000" then	
+				flag_register(0) <= '1';
+			else
+				flag_register(0) <= '0';
+			end if;
+-----------------------------------------------------------------------------------------------------------------------------------
+		elsif inst(15 downto 12) = "0100" then 
+		
+			Register_file(to_integer(unsigned(inst(8 downto 6)))) <= Register_file(to_integer(unsigned(inst(11 downto 9)))) and "0000000000" & inst(5 downto 0);
+-----------------------------------------------------------------------------------------------------------------------------------
+		elsif inst(15 downto 12) = "0101" then 
+		
+			Register_file(to_integer(unsigned(inst(8 downto 6)))) <= Register_file(to_integer(unsigned(inst(11 downto 9)))) or "0000000000" & inst(5 downto 0);	
+-----------------------------------------------------------------------------------------------------------------------------------
+		elsif inst(15 downto 12) = "0110" then 
+		
+			Register_file(to_integer(unsigned(inst(8 downto 6)))) <= Register_file(to_integer(unsigned(inst(11 downto 9)))) xor "0000000000" & inst(5 downto 0);
+-----------------------------------------------------------------------------------------------------------------------------------
+		elsif inst(15 downto 12) = "1000" then 
+         
+			ram_block_addr <= inst(3 downto 0);
+			Register_file(to_integer(unsigned(inst(11 downto 9)))) <= ram_block_output;
+			ram_block_CE <= '1'; 
+			ram_block_RE <= '1';
+			ram_block_WE <= '0';
+------------------------------------------------------------------------------------------------------------------------
+		elsif inst(15 downto 12) = "1001" then 
+         
+			ram_block_addr <= inst(3 downto 0);
+			ram_block_input <= Register_file(to_integer(unsigned(inst(11 downto 9)))); 
+			ram_block_CE <= '1'; 
+			ram_block_RE <= '0';
+			ram_block_WE <= '1';
+
+-----------------------------------------------------------------------------------------------------------------------	
+		elsif inst(15 downto 12) = "1010" then 
+			if Register_file(to_integer(unsigned(inst(8 downto 6)))) = Register_file(to_integer(unsigned(inst(11 downto 9)))) then
+				pc <= inst(3 downto 0);
+			end if;
+------------------------------------------------------------------------------------------------------------------------------------	
+		elsif inst(15 downto 12) = "1011" then 
+			if Register_file(to_integer(unsigned(inst(11 downto 9)))) > Register_file(to_integer(unsigned(inst(8 downto 6)))) then
+				pc <= inst(3 downto 0);
+			end if;
+------------------------------------------------------------------------------------------------------------------------------------	
+		elsif inst(15 downto 12) = "1100" then 
+			if Register_file(to_integer(unsigned(inst(11 downto 9)))) < Register_file(to_integer(unsigned(inst(8 downto 6)))) then
+				pc <= inst(3 downto 0);
+			end if;
+------------------------------------------------------------------------------------------------------------------------------------	
+		elsif inst(15 downto 12) = "1101" then 
+			if flag_register(1) = '1' then
+				pc <= inst(3 downto 0);
+			end if;
+------------------------------------------------------------------------------------------------------------------------------------	
+		elsif inst(15 downto 12) = "1110" then 
+			if flag_register(0) = '0' then
+				pc <= inst(3 downto 0);
+			end if;
+------------------------------------------------------------------------------------------------------------------------------------	
+		elsif inst(15 downto 12) = "1111" then 
+			pc <= inst(3 downto 0);
+------------------------------------------------------------------------------------------------------------------------------------	
+		end if;
+	
+	end if;
+-----------------------------------------------------------------------------------------------------------
+        end process;
+end behavioral;
